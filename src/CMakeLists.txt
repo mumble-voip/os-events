@@ -9,8 +9,6 @@ endif()
 
 add_library(osevents ${LIBTYPE}
 	"session_lock.cpp"
-
-	"details/dbus.cpp"
 )
 
 target_include_directories(osevents
@@ -46,4 +44,5 @@ if (UNIX AND NOT APPLE)
 	endif()
 
 	target_compile_definitions(osevents PRIVATE OSEVENTS_USE_DBUS)
+	target_sources(osevents PRIVATE "details/dbus.cpp")
 endif()
