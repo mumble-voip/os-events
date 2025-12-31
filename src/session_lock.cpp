@@ -4,12 +4,11 @@
 
 #ifdef OSEVENTS_USE_DBUS
 #	include <osevents/details/dbus.hpp>
+#	include <sdbus-c++/sdbus-c++.h>
 #endif
 
 #include <atomic>
 #include <memory>
-
-#include <sdbus-c++/sdbus-c++.h>
 
 namespace osevents {
 
