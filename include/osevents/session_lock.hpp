@@ -16,13 +16,16 @@ enum class SessionLockState {
 
 struct SessionLockData;
 
+/**
+ * Event for when the current session is locked or unlocked
+ */
 class SessionLock : public Event< void, SessionLockState > {
 public:
 	SessionLock();
 	~SessionLock();
 
 private:
-	std::unique_ptr<SessionLockData> m_data;
+	std::unique_ptr< SessionLockData > m_data;
 };
 
 } // namespace osevents
