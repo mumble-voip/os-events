@@ -47,8 +47,9 @@ WindowsEventLoop::WindowsEventLoop() {
 
 WindowsEventLoop::~WindowsEventLoop() {
 	if (m_msg_window) {
-		DestroyWindow(m_msg_window);
 		m_thread.request_stop();
+		// see https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-quit
+		PostMessage(m_msg_window, WM_QUIT, 0, 0);
 	}
 }
 
@@ -161,15 +162,19 @@ void WindowsEventLoop::event_loop(std::stop_token token) {
 	while ((bRet = GetMessage(&msg, m_msg_window, 0, 0)) != 0) {
 		if (bRet == -1) {
 			// error -> exit event loop
-		} else {
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
+			break;
 		}
+
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
 
 		if (token.stop_requested()) {
 			break;
 		}
 	}
+
+	DestroyWindow(m_msg_window);
+	m_msg_window = nullptr;
 }
 
 
