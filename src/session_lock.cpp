@@ -56,12 +56,12 @@ SessionLock::SessionLock() : m_data(std::make_unique< SessionLockData >()) {
 }
 
 SessionLock::~SessionLock() {
-#ifdef OSEVENTS_OS_WINDOWS
 	if (m_data) {
+#ifdef OSEVENTS_OS_WINDOWS
 		WTSUnRegisterSessionNotificationEx(WTS_CURRENT_SERVER, m_data->event_loop->message_window());
+#endif
 		clear_callbacks();
 	}
-#endif
 }
 
 SessionLock::SessionLock(SessionLock &&other) {
@@ -74,18 +74,14 @@ SessionLock &SessionLock::operator=(SessionLock &&other) {
 	}
 
 	// Deregister old callbacks
-#ifdef OSEVENTS_OS_WINDOWS
 	other.clear_callbacks();
-#endif
 
 	m_data = std::move(other.m_data);
 
 	// Re-register callbacks
 	// This is to make sure that the callback functions are using the correct "this" pointer
 	// which should now refer to this instead of other.
-#ifdef OSEVENTS_OS_WINDOWS
 	setup_callbacks();
-#endif
 
 	return *this;
 }
@@ -141,6 +137,9 @@ void SessionLock::setup_callbacks() {
 }
 
 void SessionLock::clear_callbacks() {
+#ifdef OSEVENTS_USE_DBUS
+	m_data->screen_saver_proxy.reset();
+#endif
 #ifdef OSEVENTS_OS_WINDOWS
 	m_data->event_loop->deregister_handler(WM_WTSSESSION_CHANGE, m_data->callback_id);
 #endif
