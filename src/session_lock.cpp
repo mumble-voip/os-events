@@ -15,9 +15,24 @@
 #include <atomic>
 #include <cassert>
 #include <memory>
+#include <ostream>
 #include <string>
 
 namespace osevents {
+
+std::ostream &operator<<(std::ostream &stream, SessionLockState state) {
+	switch (state) {
+		case SessionLockState::Locked:
+			stream << "Locked";
+			return stream;
+		case SessionLockState::Unlocked:
+			stream << "Unlocked";
+			return stream;
+	}
+
+	stream << "Invalid";
+	return stream;
+}
 
 struct SessionLockData {
 	std::atomic< SessionLockState > state;

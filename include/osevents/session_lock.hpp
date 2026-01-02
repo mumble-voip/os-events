@@ -6,6 +6,7 @@
 #include <osevents/event.hpp>
 
 #include <memory>
+#include <iosfwd>
 
 namespace osevents {
 
@@ -13,6 +14,8 @@ enum class SessionLockState {
 	Locked,
 	Unlocked,
 };
+
+std::ostream &operator<<(std::ostream &stream, SessionLockState state);
 
 struct SessionLockData;
 
