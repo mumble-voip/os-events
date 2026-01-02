@@ -4,6 +4,7 @@
 #define OSEVENTS_DETAILS_WINDOWS_HPP_
 
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <map>
 #include <memory>
@@ -59,7 +60,8 @@ private:
 };
 
 
-std::shared_ptr< WindowsEventLoop > windows_event_loop();
+std::shared_ptr< WindowsEventLoop >
+	windows_event_loop(std::chrono::milliseconds timeout = std::chrono::milliseconds(100));
 
 HMODULE own_windows_module_handle();
 

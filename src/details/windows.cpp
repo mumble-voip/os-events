@@ -178,23 +178,22 @@ void WindowsEventLoop::event_loop(std::stop_token token) {
 }
 
 
-std::shared_ptr< WindowsEventLoop > windows_event_loop() {
+std::shared_ptr< WindowsEventLoop > windows_event_loop(std::chrono::milliseconds timeout) {
 	std::shared_ptr< WindowsEventLoop > loop = win_event_loop.lock();
 
 	if (!loop) {
 		loop           = std::make_shared< WindowsEventLoop >();
 		win_event_loop = loop;
 
-		std::size_t attempts = 0;
+		// Wait for the event loop thread to spin up
+		std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
 		while (!loop->is_running()) {
-			std::this_thread::sleep_for(std::chrono::microseconds(5 * (attempts * 10 + 1)));
+			std::this_thread::sleep_for(std::chrono::microseconds(50));
 
-			if (attempts > 100) {
+			if ((std::chrono::steady_clock::now() - begin) > timeout) {
 				throw std::runtime_error("Waiting on event loop to be started timed out - this likely indicates some "
 										 "error inside the event loop");
 			}
-
-			attempts++;
 		}
 	}
 
