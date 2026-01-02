@@ -30,8 +30,14 @@ public:
 	SessionLock(const SessionLock &) = delete;
 	SessionLock(SessionLock &&);
 
+	SessionLock &operator=(const SessionLock &) = delete;
+	SessionLock &operator=(SessionLock &&);
+
 private:
 	std::unique_ptr< SessionLockData > m_data;
+
+	void setup_callbacks();
+	void clear_callbacks();
 };
 
 } // namespace osevents

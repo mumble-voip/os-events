@@ -42,6 +42,7 @@ struct SessionLockData {
 #endif
 #ifdef OSEVENTS_OS_WINDOWS
 	std::shared_ptr< details::WindowsEventLoop > event_loop;
+	std::size_t callback_id;
 #endif
 };
 
@@ -51,6 +52,45 @@ SessionLock::SessionLock() : m_data(std::make_unique< SessionLockData >()) {
 	m_data->state =
 		static_cast< SessionLockState >(std::numeric_limits< std::underlying_type_t< SessionLockState > >::max());
 
+	setup_callbacks();
+}
+
+SessionLock::~SessionLock() {
+#ifdef OSEVENTS_OS_WINDOWS
+	if (m_data) {
+		WTSUnRegisterSessionNotificationEx(WTS_CURRENT_SERVER, m_data->event_loop->message_window());
+		clear_callbacks();
+	}
+#endif
+}
+
+SessionLock::SessionLock(SessionLock &&other) {
+	*this = std::move(other);
+}
+
+SessionLock &SessionLock::operator=(SessionLock &&other) {
+	if (!other.m_data) {
+		return *this;
+	}
+
+	// Deregister old callbacks
+#ifdef OSEVENTS_OS_WINDOWS
+	other.clear_callbacks();
+#endif
+
+	m_data = std::move(other.m_data);
+
+	// Re-register callbacks
+	// This is to make sure that the callback functions are using the correct "this" pointer
+	// which should now refer to this instead of other.
+#ifdef OSEVENTS_OS_WINDOWS
+	setup_callbacks();
+#endif
+
+	return *this;
+}
+
+void SessionLock::setup_callbacks() {
 	auto callback = [this](bool activated) {
 		SessionLockState state = activated ? SessionLockState::Locked : SessionLockState::Unlocked;
 
@@ -96,16 +136,14 @@ SessionLock::SessionLock() : m_data(std::make_unique< SessionLockData >()) {
 		}
 	};
 
-	m_data->event_loop->register_handler(WM_WTSSESSION_CHANGE, std::move(handler));
+	m_data->callback_id = m_data->event_loop->register_handler(WM_WTSSESSION_CHANGE, std::move(handler));
 #endif
 }
 
-SessionLock::~SessionLock() {
+void SessionLock::clear_callbacks() {
 #ifdef OSEVENTS_OS_WINDOWS
-	WTSUnRegisterSessionNotificationEx(WTS_CURRENT_SERVER, m_data->event_loop->message_window());
+	m_data->event_loop->deregister_handler(WM_WTSSESSION_CHANGE, m_data->callback_id);
 #endif
 }
-
-SessionLock::SessionLock(SessionLock &&) = default;
 
 } // namespace osevents
