@@ -83,7 +83,7 @@ void WindowsEventLoop::deregister_handler(UINT event, std::size_t handler_id) {
 	assert(!handler_list[handler_id]);
 
 	bool delete_to_end = true;
-	for (std::size_t i = handler_id + 1; handler_list.size(); ++i) {
+	for (std::size_t i = handler_id + 1; i < handler_list.size(); ++i) {
 		if (handler_list[i]) {
 			delete_to_end = false;
 			break;
