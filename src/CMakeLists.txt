@@ -19,6 +19,9 @@ target_include_directories(osevents
 
 if (WIN32)
 	target_compile_definitions(osevents PRIVATE OSEVENTS_OS_WINDOWS)
+
+	target_sources(osevents PRIVATE "details/windows.cpp")
+	target_link_libraries(osevents PRIVATE WtsApi32)
 elseif (APPLE)
 	target_compile_definitions(osevents PRIVATE OSEVENTS_OS_APPLE)
 elseif(LINUX)
