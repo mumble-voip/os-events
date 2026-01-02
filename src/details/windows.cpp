@@ -5,7 +5,6 @@
 #include <cassert>
 #include <chrono>
 #include <functional>
-#include <iostream>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -30,8 +29,6 @@ WindowsEventLoop::WindowsEventLoop() {
 	LPWNDCLASSEX dummy = {};
 	(void) dummy;
 	if (!GetClassInfoEx(own_windows_module_handle(), message_window_class.data(), dummy)) {
-		std::cout << "Class not registered code: " << GetLastError() << std::endl;
-
 		// Register the window class we intend to use for the purpose of this event loop
 		WNDCLASSEX wx    = {};
 		wx.cbSize        = sizeof(WNDCLASSEX);
