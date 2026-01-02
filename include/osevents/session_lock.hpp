@@ -24,6 +24,9 @@ public:
 	SessionLock();
 	~SessionLock();
 
+	SessionLock(const SessionLock &) = delete;
+	SessionLock(SessionLock &&);
+
 private:
 	std::unique_ptr< SessionLockData > m_data;
 };

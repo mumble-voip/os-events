@@ -54,4 +54,6 @@ SessionLock::SessionLock() : m_data(std::make_unique< SessionLockData >()) {
 
 SessionLock::~SessionLock() = default;
 
+SessionLock::SessionLock(SessionLock &&) = default;
+
 } // namespace osevents
