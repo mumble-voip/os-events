@@ -31,7 +31,10 @@ struct SessionLockData {
 };
 
 SessionLock::SessionLock() : m_data(std::make_unique< SessionLockData >()) {
-	SessionLockState initial_state = SessionLockState::Unlocked;
+	// Initialize with an invalid but well-defined state such that first change event is guaranteed to be recognized as
+	// a transition into a new state
+	m_data->state =
+		static_cast< SessionLockState >(std::numeric_limits< std::underlying_type_t< SessionLockState > >::max());
 
 	auto callback = [this](bool activated) {
 		SessionLockState state = activated ? SessionLockState::Locked : SessionLockState::Unlocked;
@@ -50,11 +53,6 @@ SessionLock::SessionLock() : m_data(std::make_unique< SessionLockData >()) {
 
 	m_data->connection         = details::session_dbus_connection();
 	m_data->screen_saver_proxy = sdbus::createProxy(*m_data->connection, service, path);
-
-	bool is_locked = false;
-	m_data->screen_saver_proxy->callMethod("GetActive").onInterface(interface).storeResultsTo(is_locked);
-
-	initial_state = is_locked ? SessionLockState::Locked : SessionLockState::Unlocked;
 
 	m_data->screen_saver_proxy->uponSignal("ActiveChanged").onInterface(interface).call(callback);
 #endif
@@ -85,8 +83,6 @@ SessionLock::SessionLock() : m_data(std::make_unique< SessionLockData >()) {
 
 	m_data->event_loop->register_handler(WM_WTSSESSION_CHANGE, std::move(handler));
 #endif
-
-	m_data->state = initial_state;
 }
 
 SessionLock::~SessionLock() {
