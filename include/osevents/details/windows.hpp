@@ -32,7 +32,7 @@ public:
 	~WindowsEventLoop();
 
 	WindowsEventLoop(const WindowsEventLoop &) = delete;
-	WindowsEventLoop(WindowsEventLoop &&)      = default;
+	WindowsEventLoop(WindowsEventLoop &&)      = delete;
 
 	bool is_running() const;
 
