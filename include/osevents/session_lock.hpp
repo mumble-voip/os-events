@@ -4,25 +4,26 @@
 #define OSEVENTS_SESSION_LOCK_HPP_
 
 #include <osevents/event.hpp>
+#include <osevents/export_macros.hpp>
 
-#include <memory>
 #include <iosfwd>
+#include <memory>
 
 namespace osevents {
 
-enum class SessionLockState {
+enum class OSEVENTS_EXPORT SessionLockState {
 	Locked,
 	Unlocked,
 };
 
-std::ostream &operator<<(std::ostream &stream, SessionLockState state);
+OSEVENTS_EXPORT std::ostream &operator<<(std::ostream &stream, SessionLockState state);
 
 struct SessionLockData;
 
 /**
  * Event for when the current session is locked or unlocked
  */
-class SessionLock : public Event< void, SessionLockState > {
+class OSEVENTS_EXPORT SessionLock : public Event< void, SessionLockState > {
 public:
 	SessionLock();
 	~SessionLock();
@@ -31,7 +32,7 @@ public:
 	SessionLock(SessionLock &&);
 
 	SessionLock &operator=(const SessionLock &) = delete;
-	SessionLock &operator=(SessionLock &&);
+	SessionLock &operator                       =(SessionLock &&);
 
 private:
 	std::unique_ptr< SessionLockData > m_data;

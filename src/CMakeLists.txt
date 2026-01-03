@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
+include(GenerateExportHeader)
 
 set(LIBTYPE "STATIC")
 if (OSEVENTS_BUILD_SHARED)
@@ -17,6 +18,14 @@ file(GLOB_RECURSE OSEVENTS_HEADER_FILES
 	CONFIGURE_DEPENDS
 	"${PROJECT_SOURCE_DIR}/include/osevents/*.hpp"
 )
+
+generate_export_header(
+	osevents
+	EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/osevents/export_macros.hpp"
+	INCLUDE_GUARD_NAME OSEVENTS_EXPORT_MACROS_HPP_
+)
+
+list(APPEND OSEVENTS_HEADER_FILES "${CMAKE_CURRENT_BINARY_DIR}/osevents/export_macros.hpp")
 
 target_sources(osevents
 	PUBLIC
