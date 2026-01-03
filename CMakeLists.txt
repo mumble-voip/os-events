@@ -9,6 +9,7 @@ project(osevents
 
 option(OSEVENTS_BUILD_SHARED "Whether to build osevents as a shared library" ${BUILD_SHARED_LIBS})
 option(OSEVENTS_TESTS "Whether to build tests" ${PROJECT_IS_TOP_LEVEL})
+option(OSEVENTS_INSTALL "Whether to add os-events to the install target" ON)
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
@@ -19,6 +20,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 include(dependencies)
+include(install_dirs)
 
 add_subdirectory(src)
 
@@ -26,4 +28,50 @@ if (OSEVENTS_TESTS)
 	add_subdirectory(tests)
 endif()
 
-# TODO: set up export/install related boilerplate
+if (OSEVENTS_INSTALL)
+	include(CMakePackageConfigHelpers)
+
+	configure_package_config_file(
+		"${PROJECT_SOURCE_DIR}/cmake/osevents-config.cmake.in" "${CMAKE_CURRENT_BINARY_DIR}/osevents-config.cmake"
+		INSTALL_DESTINATION "${OSEVENTS_INSTALL_CMAKEDIR}"
+	)
+
+	write_basic_package_version_file(
+		"${CMAKE_CURRENT_BINARY_DIR}/osevents-config-version.cmake"
+		VERSION ${PROJECT_VERSION}
+		COMPATIBILITY SameMajorVersion
+	)
+
+	install(FILES
+		"${CMAKE_CURRENT_BINARY_DIR}/osevents-config.cmake"
+		"${CMAKE_CURRENT_BINARY_DIR}/osevents-config-version.cmake"
+		DESTINATION "${OSEVENTS_INSTALL_CMAKEDIR}"
+	)
+
+	install(
+		TARGETS osevents
+		EXPORT osevents-targets
+		RUNTIME DESTINATION "${OSEVENTS_INSTALL_BINDIR}"
+			COMPONENT osevents_runtime
+		LIBRARY DESTINATION "${OSEVENTS_INSTALL_LIBDIR}"
+			COMPONENT osevents_runtime
+			NAMELINK_COMPONENT osevents_development
+		ARCHIVE DESTINATION "${OSEVENTS_INSTALL_LIBDIR}"
+			COMPONENT osevents_development
+		FILE_SET osevents_headers
+	)
+
+	install(
+		EXPORT osevents-targets
+		DESTINATION "${OSEVENTS_INSTALL_CMAKEDIR}"
+		FILE osevents-targets.cmake
+		NAMESPACE osevents::
+		COMPONENT osevents_development
+	)
+endif()
+
+export(
+	TARGETS osevents
+	NAMESPACE osevents::
+	FILE "osevents-targets.cmake"
+)

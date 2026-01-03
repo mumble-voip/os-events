@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
-include(GNUInstallDirs)
 
 set(LIBTYPE "STATIC")
 if (OSEVENTS_BUILD_SHARED)
@@ -11,10 +10,31 @@ add_library(osevents ${LIBTYPE}
 	"session_lock.cpp"
 )
 
+add_library(osevents::osevents ALIAS osevents)
+
+file(GLOB_RECURSE OSEVENTS_HEADER_FILES
+	LIST_DIRECTORIES false
+	CONFIGURE_DEPENDS
+	"${PROJECT_SOURCE_DIR}/include/osevents/*.hpp"
+)
+
+target_sources(osevents
+	PUBLIC
+		FILE_SET osevents_headers TYPE HEADERS
+		BASE_DIRS "${PROJECT_SOURCE_DIR}/include" "${CMAKE_CURRENT_BINARY_DIR}"
+		FILES "${OSEVENTS_HEADER_FILES}"
+)
+
 target_include_directories(osevents
 	PUBLIC
 		"$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
-		"$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCCLUDEDIR}>"
+		"$<INSTALL_INTERFACE:${OSEVENTS_INSTALL_INCLUDEDIR}>"
+)
+
+set_target_properties(osevents
+	PROPERTIES
+		SOVERSION ${PROJECT_VERSION_MAJOR}
+		VERSION ${PROJECT_VERSION}
 )
 
 if (WIN32)
