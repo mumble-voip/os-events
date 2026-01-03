@@ -10,6 +10,7 @@ project(osevents
 option(OSEVENTS_BUILD_SHARED "Whether to build osevents as a shared library" ${BUILD_SHARED_LIBS})
 option(OSEVENTS_TESTS "Whether to build tests" ${PROJECT_IS_TOP_LEVEL})
 option(OSEVENTS_INSTALL "Whether to add os-events to the install target" ON)
+option(OSEVENTS_EXPORT "Whether to export os-events targets to the build tree" ON)
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
@@ -71,8 +72,10 @@ if (OSEVENTS_INSTALL)
 	)
 endif()
 
-export(
-	TARGETS osevents
-	NAMESPACE osevents::
-	FILE "osevents-targets.cmake"
-)
+if (OSEVENTS_EXPORT)
+	export(
+		TARGETS osevents
+		NAMESPACE osevents::
+		FILE "osevents-targets.cmake"
+	)
+endif()
