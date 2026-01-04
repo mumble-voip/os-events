@@ -34,7 +34,11 @@ target_sources(osevents
 		FILES "${OSEVENTS_HEADER_FILES}"
 )
 
-target_include_directories(osevents
+if (NOT PROJECT_IS_TOP_LEVEL)
+	set(SYSTEM_FLAG "SYSTEM")
+endif()
+
+target_include_directories(osevents ${SYSTEM_FLAG}
 	PUBLIC
 		"$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
 		"$<INSTALL_INTERFACE:${OSEVENTS_INSTALL_INCLUDEDIR}>"
