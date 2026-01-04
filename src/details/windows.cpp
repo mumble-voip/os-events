@@ -22,21 +22,21 @@ LRESULT WINAPI window_callback(HWND hwnd, UINT event, WPARAM wParam, LPARAM lPar
 		loop->handle(hwnd, event, wParam, lParam);
 	}
 
-	return DefWindowProc(hwnd, event, wParam, lParam);
+	return DefWindowProcA(hwnd, event, wParam, lParam);
 }
 
 WindowsEventLoop::WindowsEventLoop() {
-	LPWNDCLASSEX dummy = {};
+	LPWNDCLASSEXA dummy = {};
 	(void) dummy;
-	if (!GetClassInfoEx(own_windows_module_handle(), message_window_class.data(), dummy)) {
+	if (!GetClassInfoExA(own_windows_module_handle(), message_window_class.data(), dummy)) {
 		// Register the window class we intend to use for the purpose of this event loop
-		WNDCLASSEX wx    = {};
+		WNDCLASSEXA wx    = {};
 		wx.cbSize        = sizeof(WNDCLASSEX);
 		wx.lpfnWndProc   = window_callback; // function which will handle messages
 		wx.hInstance     = own_windows_module_handle();
 		wx.lpszClassName = message_window_class.data();
 
-		if (!RegisterClassEx(&wx)) {
+		if (!RegisterClassExA(&wx)) {
 			throw std::runtime_error("Failed at registering Windows message window class: "
 									 + std::to_string(GetLastError()));
 		}
@@ -49,7 +49,7 @@ WindowsEventLoop::~WindowsEventLoop() {
 	if (m_msg_window) {
 		m_thread.request_stop();
 		// see https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-quit
-		PostMessage(m_msg_window, WM_QUIT, 0, 0);
+		PostMessageA(m_msg_window, WM_QUIT, 0, 0);
 	}
 }
 
@@ -146,7 +146,7 @@ private:
 void WindowsEventLoop::event_loop(std::stop_token token) {
 	assert(!m_msg_window);
 
-	m_msg_window = CreateWindowEx(0, message_window_class.data(), message_window_name.data(), 0, 0, 0, 0, 0,
+	m_msg_window = CreateWindowExA(0, message_window_class.data(), message_window_name.data(), 0, 0, 0, 0, 0,
 								  HWND_MESSAGE, NULL, own_windows_module_handle(), NULL);
 
 	if (!m_msg_window) {
@@ -159,14 +159,14 @@ void WindowsEventLoop::event_loop(std::stop_token token) {
 	// see https://learn.microsoft.com/en-us/windows/win32/winmsg/about-messages-and-message-queues#message-loop
 	MSG msg;
 	BOOL bRet;
-	while ((bRet = GetMessage(&msg, m_msg_window, 0, 0)) != 0) {
+	while ((bRet = GetMessageA(&msg, m_msg_window, 0, 0)) != 0) {
 		if (bRet == -1) {
 			// error -> exit event loop
 			break;
 		}
 
 		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+		DispatchMessageA(&msg);
 
 		if (token.stop_requested()) {
 			break;
