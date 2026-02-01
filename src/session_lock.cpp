@@ -20,6 +20,20 @@
 #include <string>
 #include <vector>
 
+#ifdef OSEVENTS_USE_DBUS
+namespace osevents {
+struct SessionInfo {
+	std::string session_id;
+	std::uint32_t user_id;
+	std::string user_name;
+	std::string seat_id;
+	sdbus::ObjectPath session_path;
+};
+} // namespace osevents
+
+SDBUSCPP_REGISTER_STRUCT(osevents::SessionInfo, session_id, user_id, user_name, seat_id, session_path);
+#endif
+
 namespace osevents {
 
 std::ostream &operator<<(std::ostream &stream, SessionLockState state) {
@@ -40,13 +54,15 @@ struct SessionLockData {
 	std::atomic< SessionLockState > state;
 #ifdef OSEVENTS_USE_DBUS
 	std::vector< std::unique_ptr< sdbus::IProxy > > screen_saver_proxies;
-	std::shared_ptr< sdbus::IConnection > connection;
+	std::shared_ptr< sdbus::IConnection > session_connection;
+	std::shared_ptr< sdbus::IConnection > system_connection;
 #endif
 #ifdef OSEVENTS_OS_WINDOWS
 	std::shared_ptr< details::WindowsEventLoop > event_loop;
 	std::size_t callback_id;
 #endif
 };
+
 
 SessionLock::SessionLock() : m_data(std::make_unique< SessionLockData >()) {
 	// Initialize with an invalid but well-defined state such that first change event is guaranteed to be recognized as
@@ -100,6 +116,7 @@ void SessionLock::setup_callbacks() {
 	};
 
 #ifdef OSEVENTS_USE_DBUS
+	// Register some desktop environment (DE) specific DBus signals
 	// Note: The freedesktop interface appears to be a KDE extension only (at this point)
 	for (std::string current : { "org.freedesktop.ScreenSaver", "org.gnome.ScreenSaver" }) {
 		sdbus::ServiceName service(current.data());
@@ -110,13 +127,59 @@ void SessionLock::setup_callbacks() {
 
 		sdbus::ObjectPath path(current.data());
 
-		if (!m_data->connection) {
-			m_data->connection = details::session_dbus_connection();
+		if (!m_data->session_connection) {
+			m_data->session_connection = details::session_dbus_connection();
 		}
 
-		m_data->screen_saver_proxies.emplace_back(sdbus::createProxy(*m_data->connection, service, path));
+		m_data->screen_saver_proxies.emplace_back(sdbus::createProxy(*m_data->session_connection, service, path));
 
 		m_data->screen_saver_proxies.back()->uponSignal("ActiveChanged").onInterface(interface).call(callback);
+	}
+
+	// Monitor changes to the systemd logind session property LockedHint
+	if (!m_data->system_connection) {
+		m_data->system_connection = details::system_dbus_connection();
+	}
+	sdbus::ServiceName service("org.freedesktop.login1");
+	sdbus::ObjectPath path("/org/freedesktop/login1");
+
+	// Determine active session
+	auto proxy = sdbus::createProxy(*m_data->system_connection, service, path);
+	std::vector< SessionInfo > sessions;
+	proxy->callMethod("ListSessions").onInterface("org.freedesktop.login1.Manager").storeResultsTo(sessions);
+
+	std::unique_ptr< sdbus::IProxy > active_session;
+	for (const SessionInfo &current : sessions) {
+		active_session = sdbus::createProxy(*m_data->system_connection, service, current.session_path);
+
+		bool active = active_session->getProperty("Active").onInterface("org.freedesktop.login1.Session").get< bool >();
+		if (active) {
+			break;
+		}
+
+		active_session.reset();
+	}
+
+	if (active_session) {
+		m_data->screen_saver_proxies.emplace_back(std::move(active_session));
+		m_data->screen_saver_proxies.back()
+			->uponSignal("PropertiesChanged")
+			.onInterface("org.freedesktop.DBus.Properties")
+			.call([callback](const sdbus::InterfaceName &interface_name,
+							 const std::map< sdbus::PropertyName, sdbus::Variant > &changed_properties,
+							 const std::vector< sdbus::PropertyName > &invalidated_properties) {
+				(void) interface_name;
+				(void) invalidated_properties;
+
+				auto iter = changed_properties.find(sdbus::PropertyName("LockedHint"));
+				if (iter == changed_properties.end()) {
+					return;
+				}
+
+				bool locked = iter->second.get< bool >();
+
+				callback(locked);
+			});
 	}
 #endif
 #ifdef OSEVENTS_OS_WINDOWS
