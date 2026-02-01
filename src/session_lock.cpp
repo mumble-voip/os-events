@@ -12,11 +12,13 @@
 #	include <WtsApi32.h>
 #endif
 
+#include <algorithm>
 #include <atomic>
 #include <cassert>
 #include <memory>
 #include <ostream>
 #include <string>
+#include <vector>
 
 namespace osevents {
 
@@ -37,7 +39,7 @@ std::ostream &operator<<(std::ostream &stream, SessionLockState state) {
 struct SessionLockData {
 	std::atomic< SessionLockState > state;
 #ifdef OSEVENTS_USE_DBUS
-	std::unique_ptr< sdbus::IProxy > screen_saver_proxy;
+	std::vector< std::unique_ptr< sdbus::IProxy > > screen_saver_proxies;
 	std::shared_ptr< sdbus::IConnection > connection;
 #endif
 #ifdef OSEVENTS_OS_WINDOWS
@@ -98,14 +100,24 @@ void SessionLock::setup_callbacks() {
 	};
 
 #ifdef OSEVENTS_USE_DBUS
-	sdbus::ServiceName service("org.freedesktop.ScreenSaver");
-	sdbus::ObjectPath path("/org/freedesktop/ScreenSaver");
-	sdbus::InterfaceName interface("org.freedesktop.ScreenSaver");
+	// Note: The freedesktop interface appears to be a KDE extension only (at this point)
+	for (std::string current : { "org.freedesktop.ScreenSaver", "org.gnome.ScreenSaver" }) {
+		sdbus::ServiceName service(current.data());
+		sdbus::InterfaceName interface(current.data());
 
-	m_data->connection         = details::session_dbus_connection();
-	m_data->screen_saver_proxy = sdbus::createProxy(*m_data->connection, service, path);
+		std::ranges::replace(current, '.', '/');
+		current.insert(current.begin(), '/');
 
-	m_data->screen_saver_proxy->uponSignal("ActiveChanged").onInterface(interface).call(callback);
+		sdbus::ObjectPath path(current.data());
+
+		if (!m_data->connection) {
+			m_data->connection = details::session_dbus_connection();
+		}
+
+		m_data->screen_saver_proxies.emplace_back(sdbus::createProxy(*m_data->connection, service, path));
+
+		m_data->screen_saver_proxies.back()->uponSignal("ActiveChanged").onInterface(interface).call(callback);
+	}
 #endif
 #ifdef OSEVENTS_OS_WINDOWS
 	m_data->event_loop = details::windows_event_loop();
@@ -138,7 +150,7 @@ void SessionLock::setup_callbacks() {
 
 void SessionLock::clear_callbacks() {
 #ifdef OSEVENTS_USE_DBUS
-	m_data->screen_saver_proxy.reset();
+	m_data->screen_saver_proxies.clear();
 #endif
 #ifdef OSEVENTS_OS_WINDOWS
 	m_data->event_loop->deregister_handler(WM_WTSSESSION_CHANGE, m_data->callback_id);
