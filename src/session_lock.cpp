@@ -118,7 +118,7 @@ void SessionLock::setup_callbacks() {
 #ifdef OSEVENTS_USE_DBUS
 	// Register some desktop environment (DE) specific DBus signals
 	// Note: The freedesktop interface appears to be a KDE extension only (at this point)
-	for (std::string current : { "org.freedesktop.ScreenSaver", "org.gnome.ScreenSaver" }) {
+	for (std::string current : { "org.freedesktop.ScreenSaver", "org.gnome.ScreenSaver", "org.xfce.ScreenSaver" }) {
 		sdbus::ServiceName service(current.data());
 		sdbus::InterfaceName interface(current.data());
 
