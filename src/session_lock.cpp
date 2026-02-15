@@ -22,6 +22,7 @@
 
 #ifdef OSEVENTS_USE_DBUS
 namespace osevents {
+
 struct SessionInfo {
 	std::string session_id;
 	std::uint32_t user_id;
@@ -29,6 +30,14 @@ struct SessionInfo {
 	std::string seat_id;
 	sdbus::ObjectPath session_path;
 };
+
+struct DBusSignalEndpoint {
+	std::string service;
+	std::string interface;
+	std::string object;
+	std::string signal;
+};
+
 } // namespace osevents
 
 SDBUSCPP_REGISTER_STRUCT(osevents::SessionInfo, session_id, user_id, user_name, seat_id, session_path);
@@ -118,14 +127,25 @@ void SessionLock::setup_callbacks() {
 #ifdef OSEVENTS_USE_DBUS
 	// Register some desktop environment (DE) specific DBus signals
 	// Note: The freedesktop interface appears to be a KDE extension only (at this point)
-	for (std::string current : { "org.freedesktop.ScreenSaver", "org.gnome.ScreenSaver", "org.xfce.ScreenSaver" }) {
-		sdbus::ServiceName service(current.data());
-		sdbus::InterfaceName interface(current.data());
+	DBusSignalEndpoint endpoints[] = {
+		{ .service   = "org.freedesktop.ScreenSaver",
+		  .interface = "org.freedesktop.ScreenSaver",
+		  .object    = "/org/freedesktop/ScreenSaver",
+		  .signal    = "ActiveChanged" },
+		{ .service   = "org.gnome.ScreenSaver",
+		  .interface = "org.gnome.ScreenSaver",
+		  .object    = "/org/gnome/ScreenSaver",
+		  .signal    = "ActiveChanged" },
+		{ .service   = "org.xfce.ScreenSaver",
+		  .interface = "org.xfce.ScreenSaver",
+		  .object    = "/org/xfce/ScreenSaver",
+		  .signal    = "ActiveChanged" },
+	};
+	for (const DBusSignalEndpoint &current : endpoints) {
+		sdbus::ServiceName service(current.service);
+		sdbus::InterfaceName interface(current.interface);
 
-		std::ranges::replace(current, '.', '/');
-		current.insert(current.begin(), '/');
-
-		sdbus::ObjectPath path(current.data());
+		sdbus::ObjectPath path(current.object);
 
 		if (!m_data->session_connection) {
 			m_data->session_connection = details::session_dbus_connection();
@@ -133,7 +153,7 @@ void SessionLock::setup_callbacks() {
 
 		m_data->screen_saver_proxies.emplace_back(sdbus::createProxy(*m_data->session_connection, service, path));
 
-		m_data->screen_saver_proxies.back()->uponSignal("ActiveChanged").onInterface(interface).call(callback);
+		m_data->screen_saver_proxies.back()->uponSignal(current.signal).onInterface(interface).call(callback);
 	}
 
 	// Monitor changes to the systemd logind session property LockedHint
