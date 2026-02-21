@@ -140,6 +140,10 @@ void SessionLock::setup_callbacks() {
 		  .interface = "org.xfce.ScreenSaver",
 		  .object    = "/org/xfce/ScreenSaver",
 		  .signal    = "ActiveChanged" },
+		{ .service   = "com.canonical.Unity",
+		  .interface = "org.gnome.ScreenSaver",
+		  .object    = "/org/gnome/ScreenSaver",
+		  .signal    = "ActiveChanged" },
 	};
 	for (const DBusSignalEndpoint &current : endpoints) {
 		sdbus::ServiceName service(current.service);
@@ -201,6 +205,27 @@ void SessionLock::setup_callbacks() {
 				callback(locked);
 			});
 	}
+
+	// Watch for Unity-specific lockscreen service units
+	// Note: they appear to be a bit laggy in terms of the timing in which they detect (un)lock events
+	service = "org.freedesktop.systemd1";
+	path = "/org/freedesktop/systemd1";
+	m_data->screen_saver_proxies.emplace_back(sdbus::createProxy(*m_data->session_connection, service, path));
+	m_data->screen_saver_proxies.back()->uponSignal("UnitNew").onInterface("org.freedesktop.systemd1.Manager").call(
+		[callback] (const std::string &unit_name, const sdbus::ObjectPath &path) {
+			if (unit_name == "unity-screen-locked.target") {
+				callback(true);
+			}
+		}
+	);
+	m_data->screen_saver_proxies.back()->uponSignal("UnitRemoved").onInterface("org.freedesktop.systemd1.Manager").call(
+		[callback] (const std::string &unit_name, const sdbus::ObjectPath &path) {
+			if (unit_name == "unity-screen-locked.target") {
+				callback(false);
+			}
+		}
+	);
+
 #endif
 #ifdef OSEVENTS_OS_WINDOWS
 	m_data->event_loop = details::windows_event_loop();
