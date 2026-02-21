@@ -144,6 +144,10 @@ void SessionLock::setup_callbacks() {
 		  .interface = "org.gnome.ScreenSaver",
 		  .object    = "/org/gnome/ScreenSaver",
 		  .signal    = "ActiveChanged" },
+		{ .service   = "org.mate.ScreenSaver",
+		  .interface = "org.mate.ScreenSaver",
+		  .object    = "/org/mate/ScreenSaver",
+		  .signal    = "ActiveChanged" },
 	};
 	for (const DBusSignalEndpoint &current : endpoints) {
 		sdbus::ServiceName service(current.service);
