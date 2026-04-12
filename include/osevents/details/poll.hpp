@@ -64,6 +64,11 @@ public:
 	bool is_queued(std::size_t id) const;
 
 	/**
+	 * @returns An ID that is not yet taken by any polling function registered to this manager
+	 */
+	std::size_t create_id() const;
+
+	/**
 	 * @returns The interval at which the polling function with the given ID runs
 	 */
 	std::chrono::milliseconds interval(std::size_t id) const;

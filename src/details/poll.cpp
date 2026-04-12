@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <random>
 #include <stdexcept>
 #include <thread>
 #include <vector>
@@ -61,6 +62,23 @@ bool PollManager::is_queued(std::size_t id) const {
 	auto it = std::ranges::find(m_polls, id, &PollData::id);
 
 	return it != m_polls.end();
+}
+
+std::size_t PollManager::create_id() const {
+	std::unique_lock lock(m_lock);
+
+	std::random_device dev;
+	std::mt19937_64 rng(dev());
+
+	std::uniform_int_distribution< std::mt19937_64::result_type > dist(
+		0, std::numeric_limits< std::mt19937_64::result_type >::max());
+
+	std::size_t id = dist(rng);
+	while (std::ranges::find(m_polls, id, &PollData::id) != m_polls.end()) {
+		id = dist(rng);
+	}
+
+	return id;
 }
 
 std::chrono::milliseconds PollManager::interval(std::size_t id) const {
