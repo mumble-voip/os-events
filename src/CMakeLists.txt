@@ -68,6 +68,7 @@ else()
 endif()
 if (UNIX)
 	target_compile_definitions(osevents PRIVATE OSEVENTS_OS_UNIX)
+	target_sources(osevents PRIVATE "details/processes.cpp")
 endif()
 
 if (UNIX AND NOT APPLE)
