@@ -78,7 +78,7 @@ bool process_is_running(const Process &proc) {
 		return false;
 	}
 
-	return std::filesystem::equivalent(exe_path, proc.exe_path);
+	return exe_path == proc.exe_path;
 }
 
 #endif
