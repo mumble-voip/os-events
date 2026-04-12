@@ -7,6 +7,11 @@
 #	include <sdbus-c++/sdbus-c++.h>
 #endif
 
+#ifdef OSEVENTS_OS_UNIX
+#	include <osevents/details/poll.hpp>
+#	include <osevents/details/processes.hpp>
+#endif
+
 #ifdef OSEVENTS_OS_WINDOWS
 #	include <osevents/details/windows.hpp>
 #	include <WtsApi32.h>
@@ -15,6 +20,8 @@
 #include <algorithm>
 #include <atomic>
 #include <cassert>
+#include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -65,6 +72,10 @@ struct SessionLockData {
 	std::vector< std::unique_ptr< sdbus::IProxy > > screen_saver_proxies;
 	std::shared_ptr< sdbus::IConnection > session_connection;
 	std::shared_ptr< sdbus::IConnection > system_connection;
+#endif
+#ifdef OSEVENTS_OS_UNIX
+	std::shared_ptr< details::PollManager > poll_manager;
+	std::size_t poll_id;
 #endif
 #ifdef OSEVENTS_OS_WINDOWS
 	std::shared_ptr< details::WindowsEventLoop > event_loop;
@@ -231,6 +242,48 @@ void SessionLock::setup_callbacks() {
 	);
 
 #endif
+
+#ifdef OSEVENTS_OS_UNIX
+	std::filesystem::path screen_lock_exe;
+#	ifdef OSEVENTS_SCREENLOCK_EXE_DEFAULT
+	screen_lock_exe = OSEVENTS_SCREENLOCK_EXE_DEFAULT;
+#	endif
+	const char *env_exe = std::getenv("OSEVENTS_SCREENLOCK_EXE");
+	if (env_exe && std::filesystem::exists(env_exe)) {
+		screen_lock_exe = env_exe;
+	}
+
+	if (!screen_lock_exe.empty()) {
+		screen_lock_exe = screen_lock_exe.lexically_normal();
+		if (!m_data->poll_manager) {
+			m_data->poll_manager = details::poll_manager();
+		}
+		m_data->poll_id = m_data->poll_manager->create_id();
+		m_data->poll_manager->enqueue(m_data->poll_id, std::chrono::seconds(1), [this, screen_lock_exe, callback]() {
+			// TODO: this static var is shared across all instances of this lambda -> this is not what we want…
+			static std::optional< details::Process > proc;
+
+			if (proc.has_value()) {
+				if (!details::process_is_running(proc.value())) {
+					proc.reset();
+					callback(false);
+				}
+
+				return;
+			}
+
+			for (details::Process current : details::running_processes()) {
+				if (current.exe_path != screen_lock_exe) {
+					continue;
+				}
+
+				proc = std::move(current);
+				callback(true);
+			}
+		});
+	}
+#endif
+
 #ifdef OSEVENTS_OS_WINDOWS
 	m_data->event_loop = details::windows_event_loop();
 	assert(m_data->event_loop->is_running());
@@ -263,6 +316,11 @@ void SessionLock::setup_callbacks() {
 void SessionLock::clear_callbacks() {
 #ifdef OSEVENTS_USE_DBUS
 	m_data->screen_saver_proxies.clear();
+#endif
+#ifdef OSEVENTS_OS_UNIX
+	if (m_data->poll_manager) {
+		m_data->poll_manager->dequeue(m_data->poll_id);
+	}
 #endif
 #ifdef OSEVENTS_OS_WINDOWS
 	m_data->event_loop->deregister_handler(WM_WTSSESSION_CHANGE, m_data->callback_id);
