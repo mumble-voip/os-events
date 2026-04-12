@@ -9,6 +9,8 @@ endif()
 
 add_library(osevents ${LIBTYPE}
 	"session_lock.cpp"
+
+	"details/poll.cpp"
 )
 
 add_library(osevents::osevents ALIAS osevents)
