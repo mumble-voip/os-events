@@ -259,28 +259,35 @@ void SessionLock::setup_callbacks() {
 			m_data->poll_manager = details::poll_manager();
 		}
 		m_data->poll_id = m_data->poll_manager->create_id();
-		m_data->poll_manager->enqueue(m_data->poll_id, std::chrono::seconds(1), [this, screen_lock_exe, callback]() {
-			// TODO: this static var is shared across all instances of this lambda -> this is not what we want…
-			static std::optional< details::Process > proc;
 
-			if (proc.has_value()) {
-				if (!details::process_is_running(proc.value())) {
-					proc.reset();
-					callback(false);
+		struct PollCallback {
+			decltype(callback) func;
+			std::filesystem::path screen_lock_exe;
+			std::optional< details::Process > proc;
+
+			void operator()() {
+				if (proc.has_value()) {
+					if (!details::process_is_running(proc.value())) {
+						proc.reset();
+						func(false);
+					}
+
+					return;
 				}
 
-				return;
-			}
+				for (details::Process current : details::running_processes()) {
+					if (current.exe_path != screen_lock_exe) {
+						continue;
+					}
 
-			for (details::Process current : details::running_processes()) {
-				if (current.exe_path != screen_lock_exe) {
-					continue;
+					proc = std::move(current);
+					func(true);
 				}
-
-				proc = std::move(current);
-				callback(true);
 			}
-		});
+		};
+
+		m_data->poll_manager->enqueue(m_data->poll_id, std::chrono::seconds(1),
+									  PollCallback{ .func = callback, .screen_lock_exe = screen_lock_exe });
 	}
 #endif
 
