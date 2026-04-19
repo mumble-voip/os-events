@@ -7,11 +7,19 @@ if (OSEVENTS_BUILD_SHARED)
 	set(LIBTYPE "SHARED")
 endif()
 
+set(OSEVENTS_SCREENLOCK_EXE_DEFAULT "" CACHE STRING "Absolute path to the screen lock executable to keep polling for")
+
 add_library(osevents ${LIBTYPE}
 	"session_lock.cpp"
+
+	"details/poll.cpp"
 )
 
 add_library(osevents::osevents ALIAS osevents)
+
+if (NOT (OSEVENTS_SCREENLOCK_EXE_DEFAULT STREQUAL ""))
+	target_compile_definitions(osevents PRIVATE OSEVENTS_SCREENLOCK_EXE_DEFAULT="${OSEVENTS_SCREENLOCK_EXE_DEFAULT}")
+endif()
 
 file(GLOB_RECURSE OSEVENTS_HEADER_FILES
 	LIST_DIRECTORIES false
@@ -66,6 +74,7 @@ else()
 endif()
 if (UNIX)
 	target_compile_definitions(osevents PRIVATE OSEVENTS_OS_UNIX)
+	target_sources(osevents PRIVATE "details/processes.cpp")
 endif()
 
 if (UNIX AND NOT APPLE)

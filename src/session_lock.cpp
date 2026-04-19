@@ -7,16 +7,48 @@
 #	include <sdbus-c++/sdbus-c++.h>
 #endif
 
+#ifdef OSEVENTS_OS_UNIX
+#	include <osevents/details/poll.hpp>
+#	include <osevents/details/processes.hpp>
+#endif
+
 #ifdef OSEVENTS_OS_WINDOWS
 #	include <osevents/details/windows.hpp>
 #	include <WtsApi32.h>
 #endif
 
+#include <algorithm>
 #include <atomic>
 #include <cassert>
+#include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <ostream>
 #include <string>
+#include <vector>
+
+#ifdef OSEVENTS_USE_DBUS
+namespace osevents {
+
+struct SessionInfo {
+	std::string session_id;
+	std::uint32_t user_id;
+	std::string user_name;
+	std::string seat_id;
+	sdbus::ObjectPath session_path;
+};
+
+struct DBusSignalEndpoint {
+	std::string service;
+	std::string interface;
+	std::string object;
+	std::string signal;
+};
+
+} // namespace osevents
+
+SDBUSCPP_REGISTER_STRUCT(osevents::SessionInfo, session_id, user_id, user_name, seat_id, session_path);
+#endif
 
 namespace osevents {
 
@@ -37,14 +69,20 @@ std::ostream &operator<<(std::ostream &stream, SessionLockState state) {
 struct SessionLockData {
 	std::atomic< SessionLockState > state;
 #ifdef OSEVENTS_USE_DBUS
-	std::unique_ptr< sdbus::IProxy > screen_saver_proxy;
-	std::shared_ptr< sdbus::IConnection > connection;
+	std::vector< std::unique_ptr< sdbus::IProxy > > screen_saver_proxies;
+	std::shared_ptr< sdbus::IConnection > session_connection;
+	std::shared_ptr< sdbus::IConnection > system_connection;
+#endif
+#ifdef OSEVENTS_OS_UNIX
+	std::shared_ptr< details::PollManager > poll_manager;
+	std::size_t poll_id;
 #endif
 #ifdef OSEVENTS_OS_WINDOWS
 	std::shared_ptr< details::WindowsEventLoop > event_loop;
 	std::size_t callback_id;
 #endif
 };
+
 
 SessionLock::SessionLock() : m_data(std::make_unique< SessionLockData >()) {
 	// Initialize with an invalid but well-defined state such that first change event is guaranteed to be recognized as
@@ -98,15 +136,163 @@ void SessionLock::setup_callbacks() {
 	};
 
 #ifdef OSEVENTS_USE_DBUS
-	sdbus::ServiceName service("org.freedesktop.ScreenSaver");
-	sdbus::ObjectPath path("/org/freedesktop/ScreenSaver");
-	sdbus::InterfaceName interface("org.freedesktop.ScreenSaver");
+	// Register some desktop environment (DE) specific DBus signals
+	// Note: The freedesktop interface appears to be a KDE extension only (at this point)
+	DBusSignalEndpoint endpoints[] = {
+		{ .service   = "org.freedesktop.ScreenSaver",
+		  .interface = "org.freedesktop.ScreenSaver",
+		  .object    = "/org/freedesktop/ScreenSaver",
+		  .signal    = "ActiveChanged" },
+		{ .service   = "org.gnome.ScreenSaver",
+		  .interface = "org.gnome.ScreenSaver",
+		  .object    = "/org/gnome/ScreenSaver",
+		  .signal    = "ActiveChanged" },
+		{ .service   = "org.xfce.ScreenSaver",
+		  .interface = "org.xfce.ScreenSaver",
+		  .object    = "/org/xfce/ScreenSaver",
+		  .signal    = "ActiveChanged" },
+		{ .service   = "com.canonical.Unity",
+		  .interface = "org.gnome.ScreenSaver",
+		  .object    = "/org/gnome/ScreenSaver",
+		  .signal    = "ActiveChanged" },
+		{ .service   = "org.mate.ScreenSaver",
+		  .interface = "org.mate.ScreenSaver",
+		  .object    = "/org/mate/ScreenSaver",
+		  .signal    = "ActiveChanged" },
+	};
+	for (const DBusSignalEndpoint &current : endpoints) {
+		sdbus::ServiceName service(current.service);
+		sdbus::InterfaceName interface(current.interface);
 
-	m_data->connection         = details::session_dbus_connection();
-	m_data->screen_saver_proxy = sdbus::createProxy(*m_data->connection, service, path);
+		sdbus::ObjectPath path(current.object);
 
-	m_data->screen_saver_proxy->uponSignal("ActiveChanged").onInterface(interface).call(callback);
+		if (!m_data->session_connection) {
+			m_data->session_connection = details::session_dbus_connection();
+		}
+
+		m_data->screen_saver_proxies.emplace_back(sdbus::createProxy(*m_data->session_connection, service, path));
+
+		m_data->screen_saver_proxies.back()->uponSignal(current.signal).onInterface(interface).call(callback);
+	}
+
+	// Monitor changes to the systemd logind session property LockedHint
+	if (!m_data->system_connection) {
+		m_data->system_connection = details::system_dbus_connection();
+	}
+	sdbus::ServiceName service("org.freedesktop.login1");
+	sdbus::ObjectPath path("/org/freedesktop/login1");
+
+	// Determine active session
+	auto proxy = sdbus::createProxy(*m_data->system_connection, service, path);
+	std::vector< SessionInfo > sessions;
+	proxy->callMethod("ListSessions").onInterface("org.freedesktop.login1.Manager").storeResultsTo(sessions);
+
+	std::unique_ptr< sdbus::IProxy > active_session;
+	for (const SessionInfo &current : sessions) {
+		active_session = sdbus::createProxy(*m_data->system_connection, service, current.session_path);
+
+		bool active = active_session->getProperty("Active").onInterface("org.freedesktop.login1.Session").get< bool >();
+		if (active) {
+			break;
+		}
+
+		active_session.reset();
+	}
+
+	if (active_session) {
+		m_data->screen_saver_proxies.emplace_back(std::move(active_session));
+		m_data->screen_saver_proxies.back()
+			->uponSignal("PropertiesChanged")
+			.onInterface("org.freedesktop.DBus.Properties")
+			.call([callback](const sdbus::InterfaceName &interface_name,
+							 const std::map< sdbus::PropertyName, sdbus::Variant > &changed_properties,
+							 const std::vector< sdbus::PropertyName > &invalidated_properties) {
+				(void) interface_name;
+				(void) invalidated_properties;
+
+				auto iter = changed_properties.find(sdbus::PropertyName("LockedHint"));
+				if (iter == changed_properties.end()) {
+					return;
+				}
+
+				bool locked = iter->second.get< bool >();
+
+				callback(locked);
+			});
+	}
+
+	// Watch for Unity-specific lockscreen service units
+	// Note: they appear to be a bit laggy in terms of the timing in which they detect (un)lock events
+	service = "org.freedesktop.systemd1";
+	path    = "/org/freedesktop/systemd1";
+	m_data->screen_saver_proxies.emplace_back(sdbus::createProxy(*m_data->session_connection, service, path));
+	m_data->screen_saver_proxies.back()
+		->uponSignal("UnitNew")
+		.onInterface("org.freedesktop.systemd1.Manager")
+		.call([callback](const std::string &unit_name, const sdbus::ObjectPath &path) {
+			if (unit_name == "unity-screen-locked.target") {
+				callback(true);
+			}
+		});
+	m_data->screen_saver_proxies.back()
+		->uponSignal("UnitRemoved")
+		.onInterface("org.freedesktop.systemd1.Manager")
+		.call([callback](const std::string &unit_name, const sdbus::ObjectPath &path) {
+			if (unit_name == "unity-screen-locked.target") {
+				callback(false);
+			}
+		});
+
 #endif
+
+#ifdef OSEVENTS_OS_UNIX
+	std::filesystem::path screen_lock_exe;
+#	ifdef OSEVENTS_SCREENLOCK_EXE_DEFAULT
+	screen_lock_exe = OSEVENTS_SCREENLOCK_EXE_DEFAULT;
+#	endif
+	const char *env_exe = std::getenv("OSEVENTS_SCREENLOCK_EXE");
+	if (env_exe && std::filesystem::exists(env_exe)) {
+		screen_lock_exe = env_exe;
+	}
+
+	if (!screen_lock_exe.empty()) {
+		screen_lock_exe = screen_lock_exe.lexically_normal();
+		if (!m_data->poll_manager) {
+			m_data->poll_manager = details::poll_manager();
+		}
+		m_data->poll_id = m_data->poll_manager->create_id();
+
+		struct PollCallback {
+			decltype(callback) func;
+			std::filesystem::path screen_lock_exe;
+			std::optional< details::Process > proc;
+
+			void operator()() {
+				if (proc.has_value()) {
+					if (!details::process_is_running(proc.value())) {
+						proc.reset();
+						func(false);
+					}
+
+					return;
+				}
+
+				for (details::Process current : details::running_processes()) {
+					if (current.exe_path != screen_lock_exe) {
+						continue;
+					}
+
+					proc = std::move(current);
+					func(true);
+				}
+			}
+		};
+
+		m_data->poll_manager->enqueue(m_data->poll_id, std::chrono::seconds(1),
+									  PollCallback{ .func = callback, .screen_lock_exe = screen_lock_exe });
+	}
+#endif
+
 #ifdef OSEVENTS_OS_WINDOWS
 	m_data->event_loop = details::windows_event_loop();
 	assert(m_data->event_loop->is_running());
@@ -138,7 +324,12 @@ void SessionLock::setup_callbacks() {
 
 void SessionLock::clear_callbacks() {
 #ifdef OSEVENTS_USE_DBUS
-	m_data->screen_saver_proxy.reset();
+	m_data->screen_saver_proxies.clear();
+#endif
+#ifdef OSEVENTS_OS_UNIX
+	if (m_data->poll_manager) {
+		m_data->poll_manager->dequeue(m_data->poll_id);
+	}
 #endif
 #ifdef OSEVENTS_OS_WINDOWS
 	m_data->event_loop->deregister_handler(WM_WTSSESSION_CHANGE, m_data->callback_id);
