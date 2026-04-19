@@ -22,8 +22,9 @@ PollManager::PollManager() : m_thread(&PollManager::poll_loop, this) {
 }
 
 PollManager::~PollManager() {
-	m_thread.request_stop();
+	m_stop_requested.store(true);
 	m_condition.notify_all();
+	m_thread.join();
 }
 
 void PollManager::enqueue(std::size_t id, std::chrono::milliseconds interval, PollFunction func) {
@@ -111,7 +112,7 @@ void PollManager::poll_loop() {
 	std::vector< std::size_t > multiples;
 
 	std::chrono::steady_clock::time_point wakeup_time = std::chrono::steady_clock::now();
-	while (!m_thread.get_stop_token().stop_requested()) {
+	while (!m_stop_requested.load()) {
 		if (m_polls.empty()) {
 			// Wait until we receive data
 			m_condition.wait(lock);

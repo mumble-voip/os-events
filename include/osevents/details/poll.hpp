@@ -3,6 +3,7 @@
 #ifndef OSEVENTS_DETAILS_POLL_HPP_
 #define OSEVENTS_DETAILS_POLL_HPP_
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <functional>
@@ -81,7 +82,8 @@ public:
 	void set_interval(std::size_t id, std::chrono::milliseconds interval);
 
 private:
-	std::jthread m_thread;
+	std::atomic<bool> m_stop_requested;
+	std::thread m_thread;
 	mutable std::mutex m_lock;
 	std::vector< PollData > m_polls;
 	std::condition_variable m_condition;
