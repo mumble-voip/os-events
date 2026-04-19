@@ -54,7 +54,7 @@ std::set< Process > running_processes() {
 			continue;
 		}
 
-		processes.emplace(std::move(exe_path), pid);
+		processes.insert(Process{std::move(exe_path), pid});
 	}
 
 	return processes;
